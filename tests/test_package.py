@@ -2,11 +2,15 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import artifacts
 RIDS = ("win-x64", "win-arm64", "linux-x64", "linux-arm64", "osx-x64", "osx-arm64")
 
 
@@ -90,6 +94,31 @@ class PackageTests(unittest.TestCase):
             self.assertIn("Required native library is missing", result.stdout + result.stderr)
         finally:
             path.write_bytes(contents)
+
+    def test_candidate_roundtrip_keeps_the_original_package_bytes(self):
+        skia = dict(artifacts.identity("skiasharp", "a" * 40, "3.119.4"), sha256="c" * 64)
+        angle = dict(artifacts.identity("angle", "b" * 40, "chromium-7151"), sha256="d" * 64)
+        manifest = artifacts.package_plan(skia, angle, "12.1.4", "8.3.1.3", "r1")
+        manifest.update(file=self.package.name, sha256=artifacts.digest(self.package.read_bytes()),
+                        producer={"commit": "f" * 40, "run_id": "123"})
+        with tempfile.TemporaryDirectory() as directory:
+            candidate = Path(directory)
+            def download(tag, name, destination):
+                self.assertEqual(manifest["tag"], tag)
+                target = Path(destination) / name
+                if name == "package.json":
+                    artifacts.write_json(target, manifest)
+                else:
+                    self.assertEqual(self.package.name, name)
+                    target.write_bytes(self.package.read_bytes())
+                return target
+            with patch.object(artifacts, "download", side_effect=download):
+                actual = artifacts.fetch_package(manifest["tag"], candidate)
+            self.assertEqual(manifest, actual)
+            self.assertEqual(self.package.read_bytes(), (candidate / self.package.name).read_bytes())
+            (candidate / self.package.name).write_bytes(b"corrupt")
+            with self.assertRaisesRegex(ValueError, "checksum"):
+                artifacts.check_package(manifest, candidate)
 
 
 if __name__ == "__main__":
