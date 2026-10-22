@@ -1,0 +1,148 @@
+name: Package - StaticAvalonia
+
+on:
+  workflow_dispatch:
+    inputs:
+      skiasharp_tag:
+        description: Exact native-skiasharp component release tag
+        required: true
+        type: string
+      angle_tag:
+        description: Exact native-angle component release tag
+        required: true
+        type: string
+      avalonia_version:
+        default: '12.1.4'
+        type: string
+      harfbuzz_version:
+        default: '8.3.1.3'
+        type: string
+      revision:
+        default: r1
+        type: string
+  workflow_call:
+    inputs:
+      skiasharp_tag:
+        required: true
+        type: string
+      angle_tag:
+        required: true
+        type: string
+      avalonia_version:
+        required: true
+        type: string
+      harfbuzz_version:
+        required: true
+        type: string
+      revision:
+        default: r1
+        type: string
+    outputs:
+      package_tag:
+        value: ${{ jobs.package.outputs.tag }}
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      skiasharp_version: ${{ steps.plan.outputs.skiasharp_version }}
+      harfbuzz_version: ${{ steps.plan.outputs.harfbuzz_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Download and verify exact component bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SKIASHARP_TAG: ${{ inputs.skiasharp_tag }}
+          ANGLE_TAG: ${{ inputs.angle_tag }}
+        run: |
+          python scripts/artifacts.py fetch-component --component skiasharp --tag "$SKIASHARP_TAG" --output out/native
+          python scripts/artifacts.py fetch-component --component angle --tag "$ANGLE_TAG" --output out/native
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AVALONIA_VERSION: ${{ inputs.avalonia_version }}
+          HARFBUZZ_VERSION: ${{ inputs.harfbuzz_version }}
+          REVISION: ${{ inputs.revision }}
+        run: python scripts/artifacts.py plan-package --input out --output out/package --avalonia "$AVALONIA_VERSION" --harfbuzz "$HARFBUZZ_VERSION" --revision "$REVISION" --probe
+      - name: Pack complete native payload
+        if: steps.plan.outputs.exists != 'true'
+        env:
+          PACKAGE_VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          dotnet pack nuget/StaticAvalonia/StaticAvalonia.csproj -c Release \
+            -p:Version="$PACKAGE_VERSION" -p:NativeOutputDir="$(pwd)/out/native" -o out/package
+          python scripts/artifacts.py seal-package --output out/package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          path: out/package/
+          if-no-files-found: error
+
+  test-consumer:
+    needs: package
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: out/package
+      - name: Publish and run isolated NativeAOT consumer
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ needs.package.outputs.version }}
+          SKIASHARP_VERSION: ${{ needs.package.outputs.skiasharp_version }}
+          HARFBUZZ_VERSION: ${{ needs.package.outputs.harfbuzz_version }}
+        run: |
+          $feed = (Resolve-Path out/package).Path
+          $config = Join-Path $env:RUNNER_TEMP 'StaticAvalonia.NuGet.Config'
+          "<configuration><packageSources><clear/><add key='local' value='$feed'/><add key='nuget.org' value='https://api.nuget.org/v3/index.json'/></packageSources></configuration>" | Set-Content $config
+          $properties = @("-p:StaticAvaloniaVersion=$env:PACKAGE_VERSION", "-p:SkiaSharpVersion=$env:SKIASHARP_VERSION", "-p:HarfBuzzSharpVersion=$env:HARFBUZZ_VERSION")
+          Push-Location tests/NativeAotSmoke
+          dotnet restore --configfile $config @properties
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish -c Release --no-restore @properties -o ../../out/published
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+          New-Item -ItemType Directory out/isolated | Out-Null
+          Copy-Item out/published/NativeAotSmoke.exe out/isolated/
+          Push-Location out/isolated
+          ./NativeAotSmoke.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  persist:
+    needs: [package, test-consumer]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: candidate-${{ needs.package.outputs.tag }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: out/package
+      - name: Persist tested package candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/artifacts.py store-package --output out/package

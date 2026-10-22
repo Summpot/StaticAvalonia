@@ -9,12 +9,39 @@ on:
       - patches/angle/**
   workflow_dispatch:
   workflow_call:
+    outputs:
+      component_tag:
+        value: ${{ jobs.plan.outputs.tag }}
 
 permissions:
   contents: read
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      commit: ${{ steps.plan.outputs.commit }}
+      exists: ${{ steps.plan.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/artifacts.py plan --component angle --probe --output out/component.json
+      - uses: actions/upload-artifact@v4
+        if: steps.plan.outputs.exists != 'true'
+        with:
+          name: angle-plan
+          path: out/component.json
+
+
   build:
+    needs: plan
+    if: needs.plan.outputs.exists != 'true'
     name: ANGLE Windows ${{ matrix.arch }}
     runs-on: windows-2022
     strategy:
@@ -62,15 +89,43 @@ jobs:
       - name: Run x64 smoke test
         if: matrix.arch == 'x64'
         run: ./out/angle-smoke.exe
-      - name: Archive ANGLE
-        run: Compress-Archive -Path artifacts/angle-win-${{ matrix.arch }}/* -DestinationPath ANGLE.Static-win-${{ matrix.arch }}.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: angle-win-${{ matrix.arch }}
+          name: native-angle-win-${{ matrix.arch }}
           path: artifacts/angle-win-${{ matrix.arch }}/
           if-no-files-found: error
+
+  bundle:
+    needs: [plan, build]
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.exists != 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: component-${{ needs.plan.outputs.tag }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: angle-plan
+          path: out
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-angle-*
+          path: out/incoming
+      - name: Verify and bundle component
+        run: python scripts/artifacts.py bundle --output out/component
       - uses: actions/upload-artifact@v4
         with:
-          name: archive-angle-win-${{ matrix.arch }}
-          path: ANGLE.Static-win-${{ matrix.arch }}.zip
+          name: angle-native
+          path: out/component/
           if-no-files-found: error
+      - name: Persist immutable component release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/artifacts.py store-component --output out/component

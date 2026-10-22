@@ -2,6 +2,7 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
     <PackageId>Summpot.StaticAvalonia</PackageId>
@@ -23,6 +24,8 @@
     <None Include="../../native/angle/LICENSE.txt" Pack="true" PackagePath="licenses/ANGLE.txt" />
     <None Include="$(NativeOutputDir)/win-x64/licenses/angle/**/*" Pack="true" PackagePath="licenses/angle/" />
     <None Include="$(NativeOutputDir)/win-x64/ANGLE-source.json" Pack="true" PackagePath="build/ANGLE-source.json" Condition="Exists('$(NativeOutputDir)/win-x64/ANGLE-source.json')" />
+    <None Include="$(NativeOutputDir)/../skiasharp.json" Pack="true" PackagePath="build/components/skiasharp.json" Condition="Exists('$(NativeOutputDir)/../skiasharp.json')" />
+    <None Include="$(NativeOutputDir)/../angle.json" Pack="true" PackagePath="build/components/angle.json" Condition="Exists('$(NativeOutputDir)/../angle.json')" />
   </ItemGroup>
 
   <ItemGroup>

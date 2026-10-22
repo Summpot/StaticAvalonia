@@ -44,33 +44,63 @@ Linux still uses system fontconfig and FreeType; macOS uses system frameworks.
 Use the managed dependency versions matching your native build and verify rendering
 and text shaping in your published application.
 
-## Automated builds
+## Build, package, and publish
 
-Run **Build - StaticAvalonia Native Libraries** in GitHub Actions. The workflow builds
-all six runtimes, including Windows x64/ARM64 ANGLE, packages one NuGet package, and
-optionally publishes its archives and package.
+Native compilation, NuGet assembly, and publication are separate workflows:
 
-| Input | Purpose |
-| --- | --- |
-| `avalonia_version` | Target Avalonia version |
-| `skiasharp_version` | SkiaSharp package version used in the package identity |
-| `skiasharp_ref` | Upstream SkiaSharp commit, tag, or branch |
-| `harfbuzz_version` | Consumer HarfBuzzSharp version recorded in release notes; native source comes from the SkiaSharp commit |
-| `revision` | Package revision, such as `r1` |
-| `publish_release`, `publish_nuget` | Disable both for a build without publication |
-| `skip_native_builds` | Repack complete archives from an existing StaticAvalonia release |
+| Workflow | Input | Output |
+| --- | --- | --- |
+| **Build - SkiaSharp Static Libraries** (`build-skiasharp.yml`) | Upstream SkiaSharp ref | Six-runtime SkiaSharp/HarfBuzzSharp component bundle |
+| **Build - ANGLE Static Libraries** (`build-angle.yml`) | Pinned ANGLE source | Windows x64/ARM64 ANGLE component bundle |
+| **Package - StaticAvalonia** (`package-staticavalonia.yml`) | Two exact component tags and consumer versions | Tested NuGet package candidate |
+| **Publish - StaticAvalonia** (`build-static-libs.yml`) | One exact package candidate tag | NuGet.org package and public GitHub Release |
 
-All SkiaSharp platforms use the same resolved commit and its pinned `mono/skia`
-submodule. ANGLE uses its own pinned commit. Its workflow can also be run separately
-as **Build - ANGLE Static Libraries** for native build and link validation.
+Both native producers calculate independent identities from the upstream commit,
+patches, GN arguments, build scripts, and workflow/toolchain configuration. An
+existing matching component is reused. Changing package documentation or Avalonia
+versions does not invalidate native components; changing a component's own build
+recipe does.
 
-**Auto - Avalonia Update Watcher & Static Release** checks Avalonia releases every
-six hours, resolves the managed dependency versions, and triggers the combined build.
-Unknown versions fail instead of falling back to an unrelated branch.
+Successful producer runs on `main` persist component ZIPs and SHA-256 manifests in
+prereleases named `native-skiasharp-<digest>` and `native-angle-<digest>`. These are
+durable build inputs, not Actions artifacts with a limited retention period. PR
+builds upload Actions artifacts for validation without publishing component releases.
+Component assets are never overwritten.
 
-Release tags use `staticavalonia-<AvaloniaVersion>-skia-<SkiaSharpVersion>-<revision>`.
-Configure NuGet Trusted Publishing for **Summpot.StaticAvalonia**, this repository,
-and `.github/workflows/build-static-libs.yml` before enabling NuGet publication.
+Packaging downloads two exact component releases, checks archive and file hashes,
+and assembles `Summpot.StaticAvalonia`. It then publishes and runs a Windows x64
+NativeAOT smoke application from an isolated directory containing only its EXE.
+After this succeeds on `main`, the original `.nupkg` and its receipt are saved in a
+`package-staticavalonia-<version>-<digest>` prerelease.
+
+Publication downloads that tested candidate and verifies its hash. It does not
+compile native code or repack the package. Retrying publication uses the same bytes.
+If the NuGet version already exists, its contents must match the candidate; a different
+payload requires a new revision. Public GitHub Releases are created only after the
+matching package is available on NuGet.org.
+
+Keep NuGet Trusted Publishing configured for `.github/workflows/build-static-libs.yml`.
+That filename is retained for the publishing workflow, so its OIDC identity does not
+change. The package ID remains **Summpot.StaticAvalonia**.
+
+## Automatic releases
+
+**Auto - Avalonia Release** checks Avalonia every six hours. It resolves the required
+SkiaSharp commit, checks both independent component releases, builds only missing
+components, packages and tests their combination, and calls the publishing workflow.
+It does nothing when the same combination is already published.
+
+The workflow can also be started manually for an exact `avalonia_version` and
+`revision`. Scheduled runs use `STATICAVALONIA_REVISION`, a repository variable,
+or `r1` when unset. Increment the revision when changing artifacts or package
+contents for an already published version.
+
+HarfBuzzSharp native sources come from the SkiaSharp commit, so those two libraries
+share one native producer. The consumer HarfBuzzSharp version is recorded separately.
+ANGLE remains pinned independently in `native/angle/source.json`.
+
+See [the workflow guide](documentation/dev/avalonia-static-linking.md) for manual
+build, packaging, and publication commands.
 
 ## Validation
 
@@ -78,8 +108,8 @@ and `.github/workflows/build-static-libs.yml` before enabling NuGet publication.
 python -m unittest discover -s tests -v
 ```
 
-Tests cover version resolution, patches, archive architecture checks, package contents,
-and NativeAOT build items. ANGLE CI also links a native smoke executable for both
+Tests cover component invalidation, immutable releases, archive integrity, NuGet
+version conflicts, version resolution, patches, package contents, and NativeAOT build items. ANGLE CI also links a native smoke executable for both
 Windows architectures and runs the x64 executable.
 
 ## Licenses
