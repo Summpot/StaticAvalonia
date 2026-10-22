@@ -52,8 +52,8 @@ gh workflow run package-staticavalonia.yml \
   -f revision=r1
 ```
 
-Packaging verifies both component inventories and hashes before assembly. It does
-not call either native compiler. Missing libraries and conflicting files stop the
+Packaging verifies both component inventories and hashes before assembly. Source
+builds remain in the two native producer workflows. Missing libraries and conflicting files stop the
 operation. The package includes both component manifests under `build/components/`.
 
 A Windows x64 NativeAOT consumer checks SkiaSharp pixel rendering, HarfBuzzSharp

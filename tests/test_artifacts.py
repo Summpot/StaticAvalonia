@@ -1,4 +1,6 @@
 import io
+import json
+import contextlib
 from pathlib import Path
 import sys
 import tempfile
@@ -139,6 +141,33 @@ class CandidateTests(unittest.TestCase):
             with patch.object(artifacts, "check_package", return_value=local), patch.object(artifacts.urllib.request, "urlopen", return_value=remote):
                 with self.assertRaisesRegex(ValueError, "different package contents"):
                     artifacts.nuget_exists(self.manifest(), root)
+
+    def test_published_identical_combination_is_a_noop(self):
+        self.release_plan_case(False)
+
+    def test_changed_published_recipe_requires_a_new_revision(self):
+        self.release_plan_case(True)
+
+    def release_plan_case(self, changed):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, commit, version in (("skiasharp", "a" * 40, "3.119.4"), ("angle", "b" * 40, "chromium-7151")):
+                artifacts.write_json(root / f"{name}-plan.json", artifacts.identity(name, commit, version))
+            actual = self.manifest()
+            if changed:
+                actual["recipe"] = {"old": "recipe"}
+            artifacts.write_json(root / "published.json", actual)
+            with patch.object(sys, "argv", ["artifacts.py", "release-plan", "--input", str(root)]), \
+                 patch.dict(artifacts.os.environ, {"GITHUB_OUTPUT": str(root / "outputs")}), \
+                 patch.object(artifacts, "release", return_value={}), \
+                 patch.object(artifacts, "download", return_value=root / "published.json"), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                if changed:
+                    with self.assertRaisesRegex(ValueError, "increment"):
+                        artifacts.main()
+                else:
+                    artifacts.main()
+                    self.assertEqual("needed=false\n", (root / "outputs").read_text())
 
 
 if __name__ == "__main__":
