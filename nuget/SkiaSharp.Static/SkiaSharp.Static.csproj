@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <PackageId Condition="'$(PackageId)' == ''">Summpot.SkiaSharp.Static</PackageId>
+    <Version Condition="'$(Version)' == ''">3.119.4</Version>
+    <Authors>Summpot, Mono, Google Skia</Authors>
+    <Description>Statically linked native libraries of SkiaSharp and HarfBuzzSharp for Avalonia UI NativeAOT applications.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Summpot/StaticAvalonia</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Summpot/StaticAvalonia</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <NativeOutputDir Condition="'$(NativeOutputDir)' == ''">$(MSBuildThisFileDirectory)../../out/native</NativeOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="buildTransitive\*.targets" Pack="true" PackagePath="build" />
+    <None Include="buildTransitive\*.targets" Pack="true" PackagePath="buildTransitive" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(NativeOutputDir)\win-x64\*.lib" Pack="true" PackagePath="runtimes/win-x64/native" Condition="Exists('$(NativeOutputDir)\win-x64')" />
+    <None Include="$(NativeOutputDir)\win-x64\*.pdb" Pack="true" PackagePath="runtimes/win-x64/native" Condition="Exists('$(NativeOutputDir)\win-x64')" />
+
+    <None Include="$(NativeOutputDir)\win-arm64\*.lib" Pack="true" PackagePath="runtimes/win-arm64/native" Condition="Exists('$(NativeOutputDir)\win-arm64')" />
+    <None Include="$(NativeOutputDir)\win-arm64\*.pdb" Pack="true" PackagePath="runtimes/win-arm64/native" Condition="Exists('$(NativeOutputDir)\win-arm64')" />
+
+    <None Include="$(NativeOutputDir)\linux-x64\*.a" Pack="true" PackagePath="runtimes/linux-x64/native" Condition="Exists('$(NativeOutputDir)\linux-x64')" />
+    <None Include="$(NativeOutputDir)\linux-arm64\*.a" Pack="true" PackagePath="runtimes/linux-arm64/native" Condition="Exists('$(NativeOutputDir)\linux-arm64')" />
+
+    <None Include="$(NativeOutputDir)\osx-x64\*.a" Pack="true" PackagePath="runtimes/osx-x64/native" Condition="Exists('$(NativeOutputDir)\osx-x64')" />
+    <None Include="$(NativeOutputDir)\osx-arm64\*.a" Pack="true" PackagePath="runtimes/osx-arm64/native" Condition="Exists('$(NativeOutputDir)\osx-arm64')" />
+  </ItemGroup>
+</Project>

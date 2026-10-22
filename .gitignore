@@ -1,0 +1,12 @@
+/src_skiasharp/
+/out/
+/artifacts/
+/release-assets/
+/versions.json
+**/bin/
+**/obj/
+**/__pycache__/
+*.pyc
+*.nupkg
+/SkiaSharp.Static-*.zip
+/SkiaSharp.Static-*.tar.gz

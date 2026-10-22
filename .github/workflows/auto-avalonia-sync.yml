@@ -1,0 +1,71 @@
+name: Auto - Avalonia Update Watcher & Static Release
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # Run every 6 hours
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  check-avalonia:
+    name: Check Avalonia Releases
+    runs-on: ubuntu-latest
+    outputs:
+      needs_build: ${{ steps.detect.outputs.needs_build }}
+      avalonia_version: ${{ steps.detect.outputs.avalonia_version }}
+      skiasharp_version: ${{ steps.detect.outputs.skiasharp_version }}
+      skiasharp_ref: ${{ steps.detect.outputs.skiasharp_ref }}
+      harfbuzz_version: ${{ steps.detect.outputs.harfbuzz_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Detect Latest Avalonia & SkiaSharp Versions
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== Fetching latest Avalonia release ==="
+          AVALONIA_TAG=$(gh api repos/AvaloniaUI/Avalonia/releases/latest --jq .tag_name)
+          if [ -z "$AVALONIA_TAG" ]; then
+            echo "Failed to fetch latest Avalonia release"
+            exit 1
+          fi
+          echo "Latest Avalonia release tag: $AVALONIA_TAG"
+
+          python scripts/upstream.py detect "$AVALONIA_TAG" > versions.json
+          SKIA_VER=$(jq -r .skiasharp_version versions.json)
+
+          # Check if Release already exists in this repo
+          TAG_CHECK="avalonia-${AVALONIA_TAG}-skia-${SKIA_VER}-r1"
+          if gh release view "$TAG_CHECK" >/dev/null 2>&1; then
+            echo "Release $TAG_CHECK already exists in repository. No build required."
+            echo "needs_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "New version detected ($TAG_CHECK). Triggering build!"
+            echo "needs_build=true" >> $GITHUB_OUTPUT
+          fi
+
+  trigger-static-build:
+    name: Trigger Static Libraries Build
+    needs: check-avalonia
+    if: needs.check-avalonia.outputs.needs_build == 'true'
+    uses: ./.github/workflows/build-static-libs.yml
+    with:
+      avalonia_version: ${{ needs.check-avalonia.outputs.avalonia_version }}
+      skiasharp_version: ${{ needs.check-avalonia.outputs.skiasharp_version }}
+      skiasharp_ref: ${{ needs.check-avalonia.outputs.skiasharp_ref }}
+      harfbuzz_version: ${{ needs.check-avalonia.outputs.harfbuzz_version }}
+      package_id: "Summpot.SkiaSharp.Static"
+      publish_release: true
+      publish_nuget: true
+      nuget_user: "Summpot"
+    secrets: inherit
