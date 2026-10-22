@@ -45,7 +45,7 @@ jobs:
           SKIA_VER=$(jq -r .skiasharp_version versions.json)
 
           # Check if Release already exists in this repo
-          TAG_CHECK="avalonia-${AVALONIA_TAG}-skia-${SKIA_VER}-r1"
+          TAG_CHECK="staticavalonia-${AVALONIA_TAG}-skia-${SKIA_VER}-r1"
           if gh release view "$TAG_CHECK" >/dev/null 2>&1; then
             echo "Release $TAG_CHECK already exists in repository. No build required."
             echo "needs_build=false" >> $GITHUB_OUTPUT
@@ -64,7 +64,7 @@ jobs:
       skiasharp_version: ${{ needs.check-avalonia.outputs.skiasharp_version }}
       skiasharp_ref: ${{ needs.check-avalonia.outputs.skiasharp_ref }}
       harfbuzz_version: ${{ needs.check-avalonia.outputs.harfbuzz_version }}
-      package_id: "Summpot.SkiaSharp.Static"
+      package_id: "Summpot.StaticAvalonia"
       publish_release: true
       publish_nuget: true
       nuget_user: "Summpot"

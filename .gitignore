@@ -1,4 +1,5 @@
 /src_skiasharp/
+/src_angle/
 /out/
 /artifacts/
 /release-assets/
@@ -10,3 +11,4 @@
 *.nupkg
 /SkiaSharp.Static-*.zip
 /SkiaSharp.Static-*.tar.gz
+/ANGLE.Static-*.zip

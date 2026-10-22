@@ -64,4 +64,13 @@
     <LinkerArg Condition="'$(RuntimeIdentifier)' == 'osx-x64' or '$(RuntimeIdentifier)' == 'osx-arm64' or ('$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('OSX')))"
                Include="-framework Metal -framework CoreGraphics -framework CoreText -framework Foundation" />
   </ItemGroup>
+
+  <ItemGroup Condition="'$(PublishAot)' == 'true' and ('$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64' or ('$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))))">
+    <DirectPInvoke Include="av_libGLESv2.dll" />
+    <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64' or ('$(RuntimeIdentifier)' == '' and '$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)' == 'X64')"
+                   Include="$(_SkiaSharpStaticRoot)runtimes/win-x64/native/libGLESv2_static.lib;$(_SkiaSharpStaticRoot)runtimes/win-x64/native/libANGLE_static.lib" />
+    <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-arm64' or ('$(RuntimeIdentifier)' == '' and '$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)' == 'Arm64')"
+                   Include="$(_SkiaSharpStaticRoot)runtimes/win-arm64/native/libGLESv2_static.lib;$(_SkiaSharpStaticRoot)runtimes/win-arm64/native/libANGLE_static.lib" />
+    <LinkerArg Include="d3d9.lib;d3d11.lib;dxguid.lib;advapi32.lib;version.lib;winmm.lib" />
+  </ItemGroup>
 </Project>

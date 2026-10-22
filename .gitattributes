@@ -2,4 +2,4 @@
 *.yml text eol=lf
 *.py text eol=lf
 *.gn text eol=lf
-*.patch text eol=lf
+*.patch text eol=lf whitespace=-blank-at-eol
