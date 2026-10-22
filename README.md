@@ -68,7 +68,7 @@ builds upload Actions artifacts for validation without publishing component rele
 Component assets are never overwritten.
 
 Packaging downloads two exact component releases, checks archive and file hashes,
-and assembles `Summpot.StaticAvalonia`. It then publishes and runs a Windows x64
+and assembles `Summpot.StaticAvalonia`. It then builds and runs a Windows x64
 NativeAOT smoke application from an isolated directory containing only its EXE.
 After this succeeds on `main`, the original `.nupkg` and its receipt are saved in a
 `package-staticavalonia-<version>-<digest>` prerelease.
