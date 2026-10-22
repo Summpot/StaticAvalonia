@@ -1,71 +1,87 @@
-name: Auto - Avalonia Update Watcher & Static Release
+name: Auto - Avalonia Release
 
 on:
   schedule:
-    - cron: "0 */6 * * *" # Run every 6 hours
+    - cron: '0 */6 * * *'
   workflow_dispatch:
+    inputs:
+      avalonia_version:
+        description: Avalonia tag; leave empty for the latest release
+        default: ''
+        type: string
+      revision:
+        default: r1
+        type: string
 
 permissions:
   contents: write
-  packages: write
   id-token: write
 
+concurrency:
+  group: staticavalonia-auto-release
+  cancel-in-progress: false
+
 jobs:
-  check-avalonia:
-    name: Check Avalonia Releases
+  plan:
     runs-on: ubuntu-latest
     outputs:
-      needs_build: ${{ steps.detect.outputs.needs_build }}
+      needed: ${{ steps.release.outputs.needed }}
       avalonia_version: ${{ steps.detect.outputs.avalonia_version }}
-      skiasharp_version: ${{ steps.detect.outputs.skiasharp_version }}
-      skiasharp_ref: ${{ steps.detect.outputs.skiasharp_ref }}
       harfbuzz_version: ${{ steps.detect.outputs.harfbuzz_version }}
+      skiasharp_ref: ${{ steps.skia.outputs.commit }}
+      skiasharp_tag: ${{ steps.skia.outputs.tag }}
+      angle_tag: ${{ steps.angle.outputs.tag }}
+      skia_exists: ${{ steps.skia.outputs.exists }}
+      angle_exists: ${{ steps.angle.outputs.exists }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REVISION: ${{ inputs.revision || vars.STATICAVALONIA_REVISION || 'r1' }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-
-      - name: Detect Latest Avalonia & SkiaSharp Versions
-        id: detect
+          python-version: '3.12'
+      - id: detect
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUESTED_AVALONIA: ${{ inputs.avalonia_version }}
         run: |
-          echo "=== Fetching latest Avalonia release ==="
-          AVALONIA_TAG=$(gh api repos/AvaloniaUI/Avalonia/releases/latest --jq .tag_name)
+          AVALONIA_TAG="$REQUESTED_AVALONIA"
           if [ -z "$AVALONIA_TAG" ]; then
-            echo "Failed to fetch latest Avalonia release"
-            exit 1
+            AVALONIA_TAG=$(gh api repos/AvaloniaUI/Avalonia/releases/latest --jq .tag_name)
           fi
-          echo "Latest Avalonia release tag: $AVALONIA_TAG"
+          python scripts/upstream.py detect "$AVALONIA_TAG" > out-versions.json
+      - id: skia
+        run: python scripts/artifacts.py plan --component skiasharp --ref "$(jq -r .skiasharp_ref out-versions.json)" --probe --output out/skiasharp-plan.json
+      - id: angle
+        run: python scripts/artifacts.py plan --component angle --probe --output out/angle-plan.json
+      - id: release
+        run: python scripts/artifacts.py release-plan --input out --avalonia "$(jq -r .avalonia_version out-versions.json)" --harfbuzz "$(jq -r .harfbuzz_version out-versions.json)" --revision "$REVISION"
 
-          python scripts/upstream.py detect "$AVALONIA_TAG" > versions.json
-          SKIA_VER=$(jq -r .skiasharp_version versions.json)
+  skiasharp:
+    needs: plan
+    if: needs.plan.outputs.needed == 'true' && needs.plan.outputs.skia_exists != 'true'
+    uses: ./.github/workflows/build-skiasharp.yml
+    with:
+      skiasharp_ref: ${{ needs.plan.outputs.skiasharp_ref }}
 
-          # Check if Release already exists in this repo
-          TAG_CHECK="staticavalonia-${AVALONIA_TAG}-skia-${SKIA_VER}-r1"
-          if gh release view "$TAG_CHECK" >/dev/null 2>&1; then
-            echo "Release $TAG_CHECK already exists in repository. No build required."
-            echo "needs_build=false" >> $GITHUB_OUTPUT
-          else
-            echo "New version detected ($TAG_CHECK). Triggering build!"
-            echo "needs_build=true" >> $GITHUB_OUTPUT
-          fi
+  angle:
+    needs: plan
+    if: needs.plan.outputs.needed == 'true' && needs.plan.outputs.angle_exists != 'true'
+    uses: ./.github/workflows/build-angle.yml
 
-  trigger-static-build:
-    name: Trigger Static Libraries Build
-    needs: check-avalonia
-    if: needs.check-avalonia.outputs.needs_build == 'true'
+  package:
+    needs: [plan, skiasharp, angle]
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.needed == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    uses: ./.github/workflows/package-staticavalonia.yml
+    with:
+      skiasharp_tag: ${{ needs.plan.outputs.skiasharp_tag }}
+      angle_tag: ${{ needs.plan.outputs.angle_tag }}
+      avalonia_version: ${{ needs.plan.outputs.avalonia_version }}
+      harfbuzz_version: ${{ needs.plan.outputs.harfbuzz_version }}
+      revision: ${{ inputs.revision || vars.STATICAVALONIA_REVISION || 'r1' }}
+
+  publish:
+    needs: package
     uses: ./.github/workflows/build-static-libs.yml
     with:
-      avalonia_version: ${{ needs.check-avalonia.outputs.avalonia_version }}
-      skiasharp_version: ${{ needs.check-avalonia.outputs.skiasharp_version }}
-      skiasharp_ref: ${{ needs.check-avalonia.outputs.skiasharp_ref }}
-      harfbuzz_version: ${{ needs.check-avalonia.outputs.harfbuzz_version }}
-      package_id: "Summpot.StaticAvalonia"
-      publish_release: true
-      publish_nuget: true
-      nuget_user: "Summpot"
-    secrets: inherit
+      package_tag: ${{ needs.package.outputs.package_tag }}

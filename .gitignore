@@ -4,6 +4,7 @@
 /artifacts/
 /release-assets/
 /versions.json
+/out-versions.json
 **/bin/
 **/obj/
 **/__pycache__/
