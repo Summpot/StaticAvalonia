@@ -22,7 +22,7 @@
 | **Avalonia 更新监听** | `.github/workflows/auto-avalonia-sync.yml` | 定时检测 Avalonia 最新 Release，解析其 Skia 版本并自动触发静态库构建 |
 | **上游版本与补丁** | `scripts/upstream.py`、`patches/` | 解析上游提交，读取 Avalonia 依赖，按顺序应用可选源码补丁 |
 | **GN 构建配置** | `native/static/args.*.gn` | 针对各平台的 Skia 静态编译参数（开启 `is_static_skiasharp = true` 等） |
-| **NuGet 打包工程** | `nuget/SkiaSharp.Static/` | 将各平台静态库打入统一 NuGet 包，并提供自动注入 DirectPInvoke 的 targets |
+| **NuGet 打包工程** | `nuget/StaticAvalonia/` | 将各平台静态库打入统一 NuGet 包，并提供自动注入 DirectPInvoke 的 targets |
 
 ---
 
@@ -36,7 +36,7 @@
     - `skiasharp_ref`：编译时检出的分支或 Tag（例如 `release/3.119.4`）
     - `harfbuzz_version`：应用引用的 HarfBuzzSharp 版本（例如 `8.3.1.3`），用于发布说明；原生源码由 SkiaSharp 提交决定
     - `revision`：包修订号（默认 `r1`）
-    - `package_id`：NuGet Package ID（默认 `Summpot.SkiaSharp.Static`）
+    - `package_id`：NuGet Package ID（默认 `Summpot.StaticAvalonia`）
     - `publish_release`：是否创建 GitHub Release 并挂载资产（默认 `true`）
     - `publish_nuget`：是否通过 NuGet.org **Trusted Publishing**（OIDC 免密认证）自动推送到 NuGet.org（默认 `true`）
     - `nuget_user`：NuGet.org 用户名（默认 `Summpot`）
@@ -50,7 +50,7 @@
     - `SkiaSharp.Static-linux-arm64.tar.gz`
     - `SkiaSharp.Static-osx.tar.gz`
   - NuGet 统一安装包：
-    - `Summpot.SkiaSharp.Static.<version>.nupkg`
+    - `Summpot.StaticAvalonia.<version>.nupkg`
   - GitHub Release：自动创建 Tag `avalonia-<AvaloniaVersion>-skia-<SkiaVersion>-<revision>` 并挂载所有产物；修订号为空时省略其后缀。
   - NuGet.org 发布：利用 GitHub OIDC 与 `NuGet/login@v1` 交换短期临时 API 密钥，免密安全推送到官方 NuGet 源。
 
@@ -92,18 +92,18 @@
 
   <!-- 引入静态库包 -->
   <ItemGroup Label="StaticSkiaSharp">
-    <PackageReference Include="Summpot.SkiaSharp.Static" Version="3.119.4-avalonia.12.1.2" />
+    <PackageReference Include="Summpot.StaticAvalonia" Version="3.119.4-avalonia.12.1.2" />
   </ItemGroup>
 </Project>
 ```
 
-> **提示**：引入 `Summpot.SkiaSharp.Static` 后，该包内置的 `targets` 会在 `PublishAot == true` 时自动注入 `<DirectPInvoke>` 以及对应平台的静态库和底层系统依赖（如 Windows 的 `d3d12.lib`、`dxgi.lib` 等，Linux 的 `-lfontconfig` 等，macOS 的 Metal 框架）。
+> **提示**：引入 `Summpot.StaticAvalonia` 后，该包内置的 `targets` 会在 `PublishAot == true` 时自动注入 `<DirectPInvoke>` 以及对应平台的静态库和底层系统依赖（如 Windows 的 `d3d12.lib`、`dxgi.lib` 等，Linux 的 `-lfontconfig` 等，macOS 的 Metal 框架）。
 
 ### 方式 B：在 `.csproj` 中直接引用
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Summpot.SkiaSharp.Static" Version="3.119.4-avalonia.12.1.2" />
+  <PackageReference Include="Summpot.StaticAvalonia" Version="3.119.4-avalonia.12.1.2" />
 </ItemGroup>
 ```
 

@@ -4,10 +4,10 @@
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
-    <PackageId Condition="'$(PackageId)' == ''">Summpot.SkiaSharp.Static</PackageId>
+    <PackageId>Summpot.StaticAvalonia</PackageId>
     <Version Condition="'$(Version)' == ''">3.119.4</Version>
-    <Authors>Summpot, Mono, Google Skia</Authors>
-    <Description>Statically linked native libraries of SkiaSharp and HarfBuzzSharp for Avalonia UI NativeAOT applications.</Description>
+    <Authors>Summpot, Mono, Google Skia, The ANGLE Project Authors</Authors>
+    <Description>SkiaSharp, HarfBuzzSharp, and Windows ANGLE static libraries for Avalonia UI NativeAOT applications.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/Summpot/StaticAvalonia</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Summpot/StaticAvalonia</RepositoryUrl>
@@ -20,6 +20,9 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="buildTransitive\*.targets" Pack="true" PackagePath="build" />
     <None Include="buildTransitive\*.targets" Pack="true" PackagePath="buildTransitive" />
+    <None Include="../../native/angle/LICENSE.txt" Pack="true" PackagePath="licenses/ANGLE.txt" />
+    <None Include="$(NativeOutputDir)/win-x64/licenses/angle/**/*" Pack="true" PackagePath="licenses/angle/" />
+    <None Include="$(NativeOutputDir)/win-x64/ANGLE-source.json" Pack="true" PackagePath="build/ANGLE-source.json" Condition="Exists('$(NativeOutputDir)/win-x64/ANGLE-source.json')" />
   </ItemGroup>
 
   <ItemGroup>
@@ -35,4 +38,14 @@
     <None Include="$(NativeOutputDir)\osx-x64\*.a" Pack="true" PackagePath="runtimes/osx-x64/native" Condition="Exists('$(NativeOutputDir)\osx-x64')" />
     <None Include="$(NativeOutputDir)\osx-arm64\*.a" Pack="true" PackagePath="runtimes/osx-arm64/native" Condition="Exists('$(NativeOutputDir)\osx-arm64')" />
   </ItemGroup>
+
+  <Target Name="ValidateNativeAssets" BeforeTargets="GenerateNuspec">
+    <ItemGroup>
+      <_RequiredWindowsRid Include="win-x64;win-arm64" />
+      <_RequiredUnixRid Include="linux-x64;linux-arm64;osx-x64;osx-arm64" />
+      <_RequiredNativeAsset Include="@(_RequiredWindowsRid->'$(NativeOutputDir)/%(Identity)/skia.lib');@(_RequiredWindowsRid->'$(NativeOutputDir)/%(Identity)/SkiaSharp.lib');@(_RequiredWindowsRid->'$(NativeOutputDir)/%(Identity)/libHarfBuzzSharp.lib');@(_RequiredWindowsRid->'$(NativeOutputDir)/%(Identity)/libANGLE_static.lib');@(_RequiredWindowsRid->'$(NativeOutputDir)/%(Identity)/libGLESv2_static.lib')" />
+      <_RequiredNativeAsset Include="@(_RequiredUnixRid->'$(NativeOutputDir)/%(Identity)/libskia.a');@(_RequiredUnixRid->'$(NativeOutputDir)/%(Identity)/libSkiaSharp.a');@(_RequiredUnixRid->'$(NativeOutputDir)/%(Identity)/libHarfBuzzSharp.a')" />
+    </ItemGroup>
+    <Error Condition="!Exists('%(_RequiredNativeAsset.Identity)')" Text="Required native library is missing: %(_RequiredNativeAsset.Identity). Build all supported platforms before packing Summpot.StaticAvalonia." />
+  </Target>
 </Project>

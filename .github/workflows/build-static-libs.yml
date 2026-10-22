@@ -1,4 +1,4 @@
-name: Build - SkiaSharp & HarfBuzzSharp Static Libraries
+name: Build - StaticAvalonia Native Libraries
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ on:
       package_id:
         description: "NuGet Package ID"
         required: false
-        default: "Summpot.SkiaSharp.Static"
+        default: "Summpot.StaticAvalonia"
         type: string
       publish_release:
         description: "Create GitHub Release and attach assets"
@@ -74,7 +74,7 @@ on:
         type: string
       package_id:
         required: false
-        default: "Summpot.SkiaSharp.Static"
+        default: "Summpot.StaticAvalonia"
         type: string
       publish_release:
         required: false
@@ -99,6 +99,11 @@ permissions:
   id-token: write
 
 jobs:
+  build-angle:
+    name: Build ANGLE
+    if: ${{ !inputs.skip_native_builds }}
+    uses: ./.github/workflows/build-angle.yml
+
   resolve-source:
     name: Resolve upstream source
     if: ${{ !inputs.skip_native_builds }}
@@ -465,7 +470,7 @@ jobs:
 
   package-and-release:
     name: Package NuGet & Publish Release
-    needs: [resolve-source, build-windows, build-linux, build-macos]
+    needs: [resolve-source, build-windows, build-linux, build-macos, build-angle]
     if: ${{ always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     permissions:
@@ -520,6 +525,20 @@ jobs:
           name: native-osx
           path: out/native/
 
+      - name: Download Windows x64 ANGLE libraries
+        if: ${{ !inputs.skip_native_builds }}
+        uses: actions/download-artifact@v4
+        with:
+          name: angle-win-x64
+          path: out/native/win-x64
+
+      - name: Download Windows arm64 ANGLE libraries
+        if: ${{ !inputs.skip_native_builds }}
+        uses: actions/download-artifact@v4
+        with:
+          name: angle-win-arm64
+          path: out/native/win-arm64
+
       - name: Download archives
         if: ${{ !inputs.skip_native_builds }}
         uses: actions/download-artifact@v4
@@ -534,12 +553,12 @@ jobs:
           REV="${{ inputs.revision }}"
           if [ -n "$REV" ]; then
             PACKAGE_VER="${{ inputs.skiasharp_version }}-avalonia.${{ inputs.avalonia_version }}-$REV"
-            TAG_NAME="avalonia-${{ inputs.avalonia_version }}-skia-${{ inputs.skiasharp_version }}-$REV"
+            TAG_NAME="staticavalonia-${{ inputs.avalonia_version }}-skia-${{ inputs.skiasharp_version }}-$REV"
           else
             PACKAGE_VER="${{ inputs.skiasharp_version }}-avalonia.${{ inputs.avalonia_version }}"
-            TAG_NAME="avalonia-${{ inputs.avalonia_version }}-skia-${{ inputs.skiasharp_version }}"
+            TAG_NAME="staticavalonia-${{ inputs.avalonia_version }}-skia-${{ inputs.skiasharp_version }}"
           fi
-          BASE_TAG="avalonia-${{ inputs.avalonia_version }}-skia-${{ inputs.skiasharp_version }}"
+          BASE_TAG="staticavalonia-${{ inputs.avalonia_version }}-skia-${{ inputs.skiasharp_version }}"
           echo "PACKAGE_VER=$PACKAGE_VER" >> $GITHUB_ENV
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
           echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
@@ -551,11 +570,11 @@ jobs:
         run: |
           echo "Attempting to download native archives from release $TAG_NAME or $BASE_TAG..."
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release download "$TAG_NAME" --pattern "SkiaSharp.Static-*.zip" --pattern "SkiaSharp.Static-*.tar.gz" --dir release-assets || true
+            gh release download "$TAG_NAME" --pattern "SkiaSharp.Static-*.zip" --pattern "SkiaSharp.Static-*.tar.gz" --pattern "ANGLE.Static-*.zip" --dir release-assets
           fi
           if [ ! -f release-assets/SkiaSharp.Static-win-x64.zip ]; then
             echo "Falling back to downloading from base tag $BASE_TAG..."
-            gh release download "$BASE_TAG" --pattern "SkiaSharp.Static-*.zip" --pattern "SkiaSharp.Static-*.tar.gz" --dir release-assets
+            gh release download "$BASE_TAG" --pattern "SkiaSharp.Static-*.zip" --pattern "SkiaSharp.Static-*.tar.gz" --pattern "ANGLE.Static-*.zip" --dir release-assets
           fi
 
           echo "Extracting downloaded native archives to out/native layout..."
@@ -575,6 +594,8 @@ jobs:
           if [ -f release-assets/SkiaSharp.Static-osx.tar.gz ]; then
             tar -xzf release-assets/SkiaSharp.Static-osx.tar.gz -C out/native
           fi
+          unzip -q release-assets/ANGLE.Static-win-x64.zip -d out/native/win-x64
+          unzip -q release-assets/ANGLE.Static-win-arm64.zip -d out/native/win-arm64
 
       - name: List native binaries
         run: |
@@ -584,7 +605,7 @@ jobs:
       - name: Pack NuGet Package
         run: |
           echo "Packing version: $PACKAGE_VER"
-          dotnet pack nuget/SkiaSharp.Static/SkiaSharp.Static.csproj \
+          dotnet pack nuget/StaticAvalonia/StaticAvalonia.csproj \
             -c Release \
             -p:PackageId="${{ inputs.package_id }}" \
             -p:Version="$PACKAGE_VER" \
@@ -596,7 +617,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RELEASE_TITLE="SkiaSharp.Static for Avalonia ${{ inputs.avalonia_version }} (SkiaSharp ${{ inputs.skiasharp_version }}) $PACKAGE_VER"
+          RELEASE_TITLE="StaticAvalonia $PACKAGE_VER"
 
           NOTES=$(cat <<EOF
           ### Avalonia UI Static Native Libraries
@@ -605,6 +626,7 @@ jobs:
           - **HarfBuzzSharp Version**: \`${{ inputs.harfbuzz_version }}\`
           - **Package Version**: \`$PACKAGE_VER\`
           - **NuGet Package ID**: \`${{ inputs.package_id }}\`
+          - **ANGLE**: Windows x64 and ARM64, built from the pinned source in \`native/angle/source.json\`
           - **Supported Platforms**:
             - Windows x64 (\`win-x64\`)
             - Windows arm64 (\`win-arm64\`)

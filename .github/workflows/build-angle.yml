@@ -1,0 +1,76 @@
+name: Build - ANGLE Static Libraries
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/build-angle.yml
+      - scripts/angle.py
+      - native/angle/**
+      - patches/angle/**
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ANGLE Windows ${{ matrix.arch }}
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            msvc_arch: x64
+          - arch: arm64
+            msvc_arch: amd64_arm64
+    env:
+      DEPOT_TOOLS_WIN_TOOLCHAIN: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: TheMrMilchmann/setup-msvc-dev@v3
+        with:
+          arch: ${{ matrix.msvc_arch }}
+      - name: Setup depot_tools
+        shell: pwsh
+        run: |
+          $depot = Join-Path $env:RUNNER_TEMP 'depot_tools'
+          git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git $depot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $depot | Out-File -FilePath $env:GITHUB_PATH -Append
+          $env:PATH = "$depot;$env:PATH"
+          & "$depot/update_depot_tools.bat"
+      - name: Fetch source and dependencies
+        run: python scripts/angle.py prepare --arch ${{ matrix.arch }}
+      - name: Build complete static libraries
+        run: python scripts/angle.py build --arch ${{ matrix.arch }}
+      - name: Check architecture and collect libraries and licenses
+        run: python scripts/angle.py collect --arch ${{ matrix.arch }}
+      - name: Link static ANGLE smoke test
+        shell: pwsh
+        run: |
+          cl /nologo /MT /EHsc native/angle/smoke.cpp /Fe:out/angle-smoke.exe /link `
+            artifacts/angle-win-${{ matrix.arch }}/libGLESv2_static.lib `
+            artifacts/angle-win-${{ matrix.arch }}/libANGLE_static.lib `
+            d3d9.lib d3d11.lib dxgi.lib dxguid.lib d3dcompiler.lib gdi32.lib user32.lib `
+            ole32.lib advapi32.lib synchronization.lib version.lib winmm.lib
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run x64 smoke test
+        if: matrix.arch == 'x64'
+        run: ./out/angle-smoke.exe
+      - name: Archive ANGLE
+        run: Compress-Archive -Path artifacts/angle-win-${{ matrix.arch }}/* -DestinationPath ANGLE.Static-win-${{ matrix.arch }}.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: angle-win-${{ matrix.arch }}
+          path: artifacts/angle-win-${{ matrix.arch }}/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-angle-win-${{ matrix.arch }}
+          path: ANGLE.Static-win-${{ matrix.arch }}.zip
+          if-no-files-found: error
