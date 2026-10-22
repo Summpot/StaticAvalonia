@@ -243,6 +243,9 @@ def check_package(manifest, directory):
     expected = f"package-staticavalonia-{manifest['version']}-{digest(canonical(seed))[:16]}"
     if manifest["schema"] != 1 or manifest["package_id"] != PACKAGE_ID or manifest["tag"] != expected:
         raise ValueError("Package candidate identity mismatch")
+    suffix = f"-{manifest['revision']}" if manifest["revision"] else ""
+    if manifest["release_tag"] != f"staticavalonia-{manifest['avalonia_version']}-skia-{manifest['skiasharp_version']}{suffix}":
+        raise ValueError("Public release tag does not match the package versions")
     path = Path(directory) / manifest["file"]
     if Path(manifest["file"]).name != manifest["file"] or digest(path.read_bytes()) != manifest["sha256"]:
         raise ValueError("Package checksum mismatch")
